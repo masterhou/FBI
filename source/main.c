@@ -36,7 +36,8 @@ void cleanup() {
 
 int main(int argc, const char* argv[]) {
     gfxInitDefault();
-
+    gfxSet3D(false);
+    
     if(argc > 0) {
         svchax_init(true);
         if(!__ctr_svchax || !__ctr_svchax_srv) {

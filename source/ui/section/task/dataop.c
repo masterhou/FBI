@@ -57,7 +57,7 @@ static bool task_data_op_copy(data_op_data* data, u32 index) {
                                 break;
                             }
 
-                            if(firstRun) {
+                            if(bytesRead>0 && firstRun) {
                                 firstRun = false;
 
                                 if(R_FAILED(res = data->info->openDst(data->info->data, index, buffer, &dstHandle))) {
@@ -65,7 +65,7 @@ static bool task_data_op_copy(data_op_data* data, u32 index) {
                                 }
                             }
 
-                            if(R_FAILED(res = data->info->writeDst(data->info->data, dstHandle, &bytesWritten, buffer, data->info->currProcessed, currSize))) {
+                            if(bytesRead>0 && R_FAILED(res = data->info->writeDst(data->info->data, dstHandle, &bytesWritten, buffer, data->info->currProcessed, bytesRead))) {
                                 break;
                             }
 

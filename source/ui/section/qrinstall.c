@@ -117,7 +117,7 @@ static Result qrinstall_open_dst(void* data, u32 index, void* initialReadBlock, 
         }
 
         // Deleting FBI before it reinstalls itself causes issues.
-        if(((titleId >> 8) & 0xFFFFF) != 0xF8001) {
+        if(((titleId >> 8) & 0xFFFFF) != 0xF8888) {
             AM_DeleteTitle(dest, titleId);
             AM_DeleteTicket(titleId);
 

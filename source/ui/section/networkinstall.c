@@ -4,6 +4,8 @@
 #include <fcntl.h>
 #include <malloc.h>
 #include <stdio.h>
+#include <poll.h>
+#include <string.h>
 
 #include <3ds.h>
 
@@ -19,18 +21,23 @@ typedef struct {
     int clientSocket;
 
     u64 currTitleId;
+    u64 startTime;
     bool ticket;
 
     data_op_info installInfo;
     Handle cancelEvent;
 } network_install_data;
 
+static u32 soc_bufferSize = 1024 * 256;
+static u8* soc_buffer = NULL;
+static u32 soc_bufferpos = 0;
+
 static int recvwait(int sockfd, void* buf, size_t len, int flags) {
     errno = 0;
 
     int ret = 0;
     size_t read = 0;
-    while(((ret = recv(sockfd, buf + read, len - read, flags)) >= 0 && (read += ret) < len) || errno == EAGAIN) {
+    while(((ret = recv(sockfd, buf + read, len - read, flags)) > 0 && (read += ret) < len) || errno == EAGAIN) {
         errno = 0;
     }
 
@@ -81,19 +88,29 @@ static Result networkinstall_get_src_size(void* data, u32 handle, u64* size) {
         return R_FBI_ERRNO;
     }
 
+    if(soc_buffer==NULL) soc_buffer = (u8*) calloc(1, soc_bufferSize);
+    soc_bufferpos = 0;
+
     *size = __builtin_bswap64(netSize);
     return 0;
 }
 
 static Result networkinstall_read_src(void* data, u32 handle, u32* bytesRead, void* buffer, u64 offset, u32 size) {
-    network_install_data* networkInstallData = (network_install_data*) data;
+    // network_install_data* networkInstallData = (network_install_data*) data;
 
-    int ret = 0;
-    if((ret = recvwait(networkInstallData->clientSocket, buffer, size, 0)) < 0) {
-        return R_FBI_ERRNO;
+    // int ret = 0;
+    // if((ret = recvwait(networkInstallData->clientSocket, buffer, size, 0)) <= 0) {
+    //     return R_FBI_ERRNO;
+    // }
+
+    // *bytesRead = (u32) ret;
+    // return 0;
+
+    if(soc_buffer != NULL && soc_bufferpos>0){
+        memcpy(buffer, soc_buffer, soc_bufferpos);
+        *bytesRead = (u32) soc_bufferpos;
+        soc_bufferpos = 0;
     }
-
-    *bytesRead = (u32) ret;
     return 0;
 }
 
@@ -121,7 +138,7 @@ static Result networkinstall_open_dst(void* data, u32 index, void* initialReadBl
         }
 
         // Deleting FBI before it reinstalls itself causes issues.
-        if(((titleId >> 8) & 0xFFFFF) != 0xF8001) {
+        if(((titleId >> 8) & 0xFFFFF) != 0xF8888) {
             AM_DeleteTitle(dest, titleId);
             AM_DeleteTicket(titleId);
 
@@ -132,6 +149,7 @@ static Result networkinstall_open_dst(void* data, u32 index, void* initialReadBl
 
         if(R_SUCCEEDED(res = AM_StartCiaInstall(dest, handle))) {
             networkInstallData->currTitleId = titleId;
+            networkInstallData->startTime = osGetTime();
         }
     }
 
@@ -212,8 +230,12 @@ static void networkinstall_install_update(ui_view* view, void* data, float* prog
         svcSignalEvent(networkInstallData->cancelEvent);
     }
 
+    if(soc_buffer != NULL && soc_bufferpos == 0)
+        soc_bufferpos = recvwait(networkInstallData->clientSocket, soc_buffer, soc_bufferSize, 0);
+
     *progress = networkInstallData->installInfo.currTotal != 0 ? (float) ((double) networkInstallData->installInfo.currProcessed / (double) networkInstallData->installInfo.currTotal) : 0;
-    snprintf(text, PROGRESS_TEXT_MAX, "%lu / %lu\n%.2f MB / %.2f MB", networkInstallData->installInfo.processed, networkInstallData->installInfo.total, networkInstallData->installInfo.currProcessed / 1024.0 / 1024.0, networkInstallData->installInfo.currTotal / 1024.0 / 1024.0);
+    float speed = networkInstallData->installInfo.currProcessed / (osGetTime() - networkInstallData->startTime) / 1048.5f;
+    snprintf(text, PROGRESS_TEXT_MAX, "%lu / %lu\n%.2f MB / %.2f MB\nSpeed: %.3f MB/s", networkInstallData->installInfo.processed, networkInstallData->installInfo.total, networkInstallData->installInfo.currProcessed / 1024.0 / 1024.0, networkInstallData->installInfo.currTotal / 1024.0 / 1024.0, speed);
 }
 
 static void networkinstall_confirm_onresponse(ui_view* view, void* data, bool response) {
@@ -286,7 +308,7 @@ void networkinstall_open() {
         return;
     }
 
-    int bufSize = 1024 * 32;
+    int bufSize = 32768;
     setsockopt(sock, SOL_SOCKET, SO_RCVBUF, &bufSize, sizeof(bufSize));
 
     struct sockaddr_in server;

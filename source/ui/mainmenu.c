@@ -9,6 +9,7 @@
 #include "../screen.h"
 
 static list_item sd = {"SD", COLOR_TEXT, files_open_sd};
+static list_item ftp = {"FTP", COLOR_TEXT, ftp_open};
 static list_item ctr_nand = {"CTR NAND", COLOR_TEXT, files_open_ctr_nand};
 static list_item twl_nand = {"TWL NAND", COLOR_TEXT, files_open_twl_nand};
 static list_item twl_photo = {"TWL Photo", COLOR_TEXT, files_open_twl_photo};
@@ -58,18 +59,19 @@ static void mainmenu_update(ui_view* view, void* data, linked_list* items, list_
 
     if(linked_list_size(items) == 0) {
         linked_list_add(items, &sd);
-        linked_list_add(items, &ctr_nand);
-        linked_list_add(items, &twl_nand);
+        linked_list_add(items, &ftp);
+        linked_list_add(items, &network_install);
+        linked_list_add(items, &titles);
         linked_list_add(items, &twl_photo);
         linked_list_add(items, &twl_sound);
-        linked_list_add(items, &dump_nand);
-        linked_list_add(items, &titles);
         linked_list_add(items, &pending_titles);
         linked_list_add(items, &tickets);
         linked_list_add(items, &ext_save_data);
         linked_list_add(items, &system_save_data);
-        linked_list_add(items, &network_install);
+        linked_list_add(items, &ctr_nand);
+        linked_list_add(items, &twl_nand);
         linked_list_add(items, &qr_code_install);
+        linked_list_add(items, &dump_nand);
     }
 }
 

@@ -18,6 +18,7 @@ typedef struct {
     char** contents;
 
     u64 currTitleId;
+    u64 startTime;
 
     data_op_info installInfo;
     Handle cancelEvent;
@@ -92,7 +93,7 @@ static Result action_install_cias_open_dst(void* data, u32 index, void* initialR
     }
 
     // Deleting FBI before it reinstalls itself causes issues.
-    if(((titleId >> 8) & 0xFFFFF) != 0xF8001) {
+    if(((titleId >> 8) & 0xFFFFF) != 0xF8888) {
         AM_DeleteTitle(dest, titleId);
         AM_DeleteTicket(titleId);
 
@@ -104,6 +105,7 @@ static Result action_install_cias_open_dst(void* data, u32 index, void* initialR
     Result res = AM_StartCiaInstall(dest, handle);
     if(R_SUCCEEDED(res)) {
         installData->currTitleId = titleId;
+        installData->startTime = osGetTime();
     }
 
     return res;
@@ -196,7 +198,8 @@ static void action_install_cias_update(ui_view* view, void* data, float* progres
     }
 
     *progress = installData->installInfo.currTotal != 0 ? (float) ((double) installData->installInfo.currProcessed / (double) installData->installInfo.currTotal) : 0;
-    snprintf(text, PROGRESS_TEXT_MAX, "%lu / %lu\n%.2f MB / %.2f MB", installData->installInfo.processed, installData->installInfo.total, installData->installInfo.currProcessed / 1024.0 / 1024.0, installData->installInfo.currTotal / 1024.0 / 1024.0);
+    float speed = installData->installInfo.currProcessed / (osGetTime() - installData->startTime) / 1048.5f;
+    snprintf(text, PROGRESS_TEXT_MAX, "%lu / %lu\n%.2f MB / %.2f MB\nSpeed: %.3f MB/s", installData->installInfo.processed, installData->installInfo.total, installData->installInfo.currProcessed / 1024.0 / 1024.0, installData->installInfo.currTotal / 1024.0 / 1024.0, speed);
 }
 
 static void action_install_cias_onresponse(ui_view* view, void* data, bool response) {

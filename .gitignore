@@ -3,3 +3,5 @@ CMakeLists.txt
 
 build
 output
+.DS_Store
+source/.DS_Store

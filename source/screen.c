@@ -221,6 +221,7 @@ void screen_init() {
     screen_load_texture_file(TEXTURE_WIFI_1, "wifi1.png", true);
     screen_load_texture_file(TEXTURE_WIFI_2, "wifi2.png", true);
     screen_load_texture_file(TEXTURE_WIFI_3, "wifi3.png", true);
+    screen_load_texture_file(TEXTURE_FTP, "ftp.png", true);
 }
 
 void screen_exit() {

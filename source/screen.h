@@ -39,6 +39,7 @@
 #define TEXTURE_WIFI_2 28
 #define TEXTURE_WIFI_3 29
 #define TEXTURE_AUTO_START 30
+#define TEXTURE_FTP 31
 
 #define COLOR_TEXT 0
 #define COLOR_NAND 1
