@@ -7,11 +7,12 @@
 #include <3ds.h>
 #include "section.h"
 #include "../mainmenu.h"
+#include "../ui.h"
 #include "../list.h"
 #include "../error.h"
 #include "../info.h"
 #include "../prompt.h"
-#include "../../screen.h"
+#include "../../core/screen.h"
 #include "../../ftpd/ftp.h"
 #include "../../ftpd/console.h"
 

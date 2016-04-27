@@ -4,9 +4,9 @@
 
 #include <3ds.h>
 
-#include "section/task/task.h"
 #include "ui.h"
-#include "../screen.h"
+#include "section/task/task.h"
+#include "../core/screen.h"
 
 #define MAX_UI_VIEWS 16
 
@@ -105,6 +105,14 @@ static void ui_draw_top(ui_view* ui) {
     float topScreenBottomBarY = TOP_SCREEN_HEIGHT - topScreenBottomBarHeight;
     screen_draw_texture(TEXTURE_TOP_SCREEN_BOTTOM_BAR, topScreenBottomBarX, topScreenBottomBarY, topScreenBottomBarWidth, topScreenBottomBarHeight);
     screen_draw_texture(TEXTURE_TOP_SCREEN_BOTTOM_BAR_SHADOW, topScreenBottomBarX, topScreenBottomBarY - topScreenBottomBarShadowHeight, topScreenBottomBarShadowWidth, topScreenBottomBarShadowHeight);
+
+    char verText[64];
+    snprintf(verText, 64, "Ver. %s", VERSION_STRING);
+
+    float verWidth;
+    float verHeight;
+    screen_get_string_size(&verWidth, &verHeight, verText, 0.5f, 0.5f);
+    screen_draw_string(verText, topScreenTopBarX + 2, topScreenTopBarY + (topScreenTopBarHeight - verHeight) / 2, 0.5f, 0.5f, COLOR_TEXT, false);
 
     time_t t = time(NULL);
     char* timeText = ctime(&t);
