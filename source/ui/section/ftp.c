@@ -14,7 +14,6 @@
 #include "../prompt.h"
 #include "../../core/screen.h"
 #include "../../ftpd/ftp.h"
-#include "../../ftpd/console.h"
 
 typedef struct{
     bool ftpInitialised;
