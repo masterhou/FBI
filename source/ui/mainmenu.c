@@ -52,16 +52,16 @@ static void mainmenu_update(ui_view* view, void* data, linked_list* items, list_
         linked_list_add(items, &sd);
         linked_list_add(items, &ftp);
         linked_list_add(items, &network_install);
+        linked_list_add(items, &qr_code_install);
         linked_list_add(items, &titles);
+        linked_list_add(items, &tickets);
+        linked_list_add(items, &pending_titles);
         linked_list_add(items, &twl_photo);
         linked_list_add(items, &twl_sound);
-        linked_list_add(items, &pending_titles);
-        linked_list_add(items, &tickets);
         linked_list_add(items, &ext_save_data);
         linked_list_add(items, &system_save_data);
         linked_list_add(items, &ctr_nand);
         linked_list_add(items, &twl_nand);
-        linked_list_add(items, &qr_code_install);
         linked_list_add(items, &dump_nand);
     }
 }

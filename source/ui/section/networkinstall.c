@@ -89,24 +89,14 @@ static Result networkinstall_get_src_size(void* data, u32 handle, u64* size) {
         return R_FBI_ERRNO;
     }
 
-    if(soc_buffer==NULL) soc_buffer = (u8*) calloc(1, soc_bufferSize);
     soc_bufferpos = 0;
+    if(soc_buffer==NULL) soc_buffer = (u8*) calloc(1, soc_bufferSize);
 
     *size = __builtin_bswap64(netSize);
     return 0;
 }
 
 static Result networkinstall_read_src(void* data, u32 handle, u32* bytesRead, void* buffer, u64 offset, u32 size) {
-    // network_install_data* networkInstallData = (network_install_data*) data;
-
-    // int ret = 0;
-    // if((ret = recvwait(networkInstallData->clientSocket, buffer, size, 0)) <= 0) {
-    //     return R_FBI_ERRNO;
-    // }
-
-    // *bytesRead = (u32) ret;
-    // return 0;
-
     if(soc_buffer != NULL && soc_bufferpos>0){
         memcpy(buffer, soc_buffer, soc_bufferpos);
         *bytesRead = (u32) soc_bufferpos;
