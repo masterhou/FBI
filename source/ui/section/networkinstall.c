@@ -23,6 +23,7 @@ typedef struct {
 
     u64 currTitleId;
     u64 startTime;
+    u8 productCode[0x10 + 1];
     bool ticket;
 
     data_op_info installInfo;
@@ -119,6 +120,14 @@ static Result networkinstall_open_dst(void* data, u32 index, void* initialReadBl
 
         u32 headerSize = *(u32*) &cia[0x00];
         u32 certSize = *(u32*) &cia[0x08];
+        // u32 ticketSize = *(u32*) &cia[0x0C];
+        // u32 tmdSize = *(u32*) &cia[0x10];
+        u32 magic = *(u32*) &cia[0x3A00];
+        static u32 MAGIC = 0x4843434E;//'NCCH'
+        if(magic == MAGIC)
+            memcpy(networkInstallData->productCode, &cia[0x3A50], 0x10);
+        networkInstallData->productCode[0x10] = '\0';
+
         u64 titleId = __builtin_bswap64(*(u64*) &cia[((headerSize + 0x3F) & ~0x3F) + ((certSize + 0x3F) & ~0x3F) + 0x1DC]);
 
         FS_MediaType dest = ((titleId >> 32) & 0x8010) != 0 ? MEDIATYPE_NAND : MEDIATYPE_SD;
@@ -226,7 +235,8 @@ static void networkinstall_install_update(ui_view* view, void* data, float* prog
 
     *progress = networkInstallData->installInfo.currTotal != 0 ? (float) ((double) networkInstallData->installInfo.currProcessed / (double) networkInstallData->installInfo.currTotal) : 0;
     float speed = networkInstallData->installInfo.currProcessed / (osGetTime() - networkInstallData->startTime) / 1048.5f;
-    snprintf(text, PROGRESS_TEXT_MAX, "%lu / %lu\n%.2f MB / %.2f MB\nSpeed: %.3f MB/s", networkInstallData->installInfo.processed, networkInstallData->installInfo.total, networkInstallData->installInfo.currProcessed / 1024.0 / 1024.0, networkInstallData->installInfo.currTotal / 1024.0 / 1024.0, speed);
+    snprintf(text, PROGRESS_TEXT_MAX, "%lu / %lu\n%s: %.2f MB / %.2f MB\nSpeed: %.3f MB/s", networkInstallData->installInfo.processed, networkInstallData->installInfo.total, 
+        (char*)networkInstallData->productCode, networkInstallData->installInfo.currProcessed / 1024.0 / 1024.0, networkInstallData->installInfo.currTotal / 1024.0 / 1024.0, speed);
 }
 
 static void networkinstall_confirm_onresponse(ui_view* view, void* data, bool response) {
@@ -235,7 +245,7 @@ static void networkinstall_confirm_onresponse(ui_view* view, void* data, bool re
     if(response) {
         networkInstallData->cancelEvent = task_data_op(&networkInstallData->installInfo);
         if(networkInstallData->cancelEvent != 0) {
-            info_display("Installing Over Network", "Press B to cancel.", true, data, networkinstall_install_update, NULL);
+            info_display("Installing Over Network", "Long Press B to cancel.", true, data, networkinstall_install_update, NULL);
         } else {
             error_display(NULL, NULL, NULL, "Failed to initiate installation.");
 
