@@ -106,6 +106,11 @@ static Result networkinstall_read_src(void* data, u32 handle, u32* bytesRead, vo
     return 0;
 }
 
+static inline u32 align(u32 offset, u32 alignment){
+    u32 mask = ~(alignment-1);
+    return (offset + (alignment-1)) & mask;
+}
+
 static Result networkinstall_open_dst(void* data, u32 index, void* initialReadBlock, u32* handle) {
     network_install_data* networkInstallData = (network_install_data*) data;
 
@@ -120,12 +125,13 @@ static Result networkinstall_open_dst(void* data, u32 index, void* initialReadBl
 
         u32 headerSize = *(u32*) &cia[0x00];
         u32 certSize = *(u32*) &cia[0x08];
-        // u32 ticketSize = *(u32*) &cia[0x0C];
-        // u32 tmdSize = *(u32*) &cia[0x10];
-        u32 magic = *(u32*) &cia[0x3A00];
-        static u32 MAGIC = 0x4843434E;//'NCCH'
-        if(magic == MAGIC)
-            memcpy(networkInstallData->productCode, &cia[0x3A50], 0x10);
+        u32 ticketSize = *(u32*) &cia[0x0C];
+        u32 tmdSize = *(u32*) &cia[0x10];
+        u8* ncch = cia + align(headerSize, 0x40) + align(certSize, 0x40) + align(ticketSize, 0x40) + align(tmdSize, 0x40);
+
+        //static u32 MAGIC = 0x4843434E;//'NCCH'
+        if(*(u32*) &ncch[0x100] == 0x4843434E)
+            memcpy(networkInstallData->productCode, &ncch[0x150], 0x10);
         networkInstallData->productCode[0x10] = '\0';
 
         u64 titleId = __builtin_bswap64(*(u64*) &cia[((headerSize + 0x3F) & ~0x3F) + ((certSize + 0x3F) & ~0x3F) + 0x1DC]);
