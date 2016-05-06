@@ -39,6 +39,7 @@ DESCRIPTION := Open source CIA installer.
 AUTHOR := Steveice10
 PRODUCT_CODE := HYT-P-CFBI
 UNIQUE_ID := 0xF8888
+BUILD_FLAGS += -O3 -DUNIQUE_ID=$(UNIQUE_ID) -fno-exceptions -ffunction-sections
 
 SYSTEM_MODE := 64MB
 SYSTEM_MODE_EXT := Legacy
