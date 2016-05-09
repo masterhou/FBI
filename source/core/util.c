@@ -6,6 +6,7 @@
 #include <3ds.h>
 
 #include "util.h"
+#include "../ui/error.h"
 #include "../ui/section/task/task.h"
 
 extern void cleanup();
@@ -152,33 +153,18 @@ void util_free_path_utf8(FS_Path* path) {
     free(path);
 }
 
-bool util_exists(FS_Archive* archive, const char* path) {
-    bool exists = false;
-
-    FS_Path* fsPath = util_make_path_utf8(path);
-    if(path != NULL) {
-        Handle handle = 0;
-        if(R_SUCCEEDED(FSUSER_OpenFile(&handle, *archive, *fsPath, FS_OPEN_READ, 0))) {
-            FSFILE_Close(handle);
-            exists = true;
-        } else if(R_SUCCEEDED(FSUSER_OpenDirectory(&handle, *archive, *fsPath))) {
-            FSDIR_Close(handle);
-            exists = true;
-        }
-
-        util_free_path_utf8(fsPath);
-    }
-
-    return exists;
+FS_Path util_make_binary_path(const void* data, u32 size) {
+    FS_Path path = {PATH_BINARY, size, data};
+    return path;
 }
 
-bool util_is_dir(FS_Archive* archive, const char* path) {
+bool util_is_dir(FS_Archive archive, const char* path) {
     Result res = 0;
 
     FS_Path* fsPath = util_make_path_utf8(path);
     if(fsPath != NULL) {
         Handle dirHandle = 0;
-        if(R_SUCCEEDED(res = FSUSER_OpenDirectory(&dirHandle, *archive, *fsPath))) {
+        if(R_SUCCEEDED(res = FSUSER_OpenDirectory(&dirHandle, archive, *fsPath))) {
             FSDIR_Close(dirHandle);
         }
 
@@ -190,19 +176,22 @@ bool util_is_dir(FS_Archive* archive, const char* path) {
     return R_SUCCEEDED(res);
 }
 
-Result util_ensure_dir(FS_Archive* archive, const char* path) {
+Result util_ensure_dir(FS_Archive archive, const char* path) {
     Result res = 0;
 
-    if(!util_is_dir(archive, path)) {
-        FS_Path* fsPath = util_make_path_utf8(path);
-        if(fsPath != NULL) {
-            FSUSER_DeleteFile(*archive, *fsPath);
-            res = FSUSER_CreateDirectory(*archive, *fsPath, 0);
-
-            util_free_path_utf8(fsPath);
+    FS_Path* fsPath = util_make_path_utf8(path);
+    if(fsPath != NULL) {
+        Handle dirHandle = 0;
+        if(R_SUCCEEDED(FSUSER_OpenDirectory(&dirHandle, archive, *fsPath))) {
+            FSDIR_Close(dirHandle);
         } else {
-            res = R_FBI_OUT_OF_MEMORY;
+            FSUSER_DeleteFile(archive, *fsPath);
+            res = FSUSER_CreateDirectory(archive, *fsPath, 0);
         }
+
+        util_free_path_utf8(fsPath);
+    } else {
+        res = R_FBI_OUT_OF_MEMORY;
     }
 
     return res;
@@ -247,283 +236,77 @@ void util_get_parent_path(char* out, const char* path, u32 size) {
     out[terminatorPos] = '\0';
 }
 
-bool util_filter_dirs(void* data, FS_Archive* archive, const char* path, u32 attributes) {
-    return (bool) (attributes & FS_ATTRIBUTE_DIRECTORY);
+static Result FSUSER_AddSeed(u64 titleId, const void* seed) {
+    u32 *cmdbuf = getThreadCommandBuffer();
+
+    cmdbuf[0] = 0x087a0180;
+    cmdbuf[1] = (u32) (titleId & 0xFFFFFFFF);
+    cmdbuf[2] = (u32) (titleId >> 32);
+    memcpy(&cmdbuf[3], seed, 16);
+
+    Result ret = 0;
+    if(R_FAILED(ret = svcSendSyncRequest(*fsGetSessionHandle()))) return ret;
+
+    ret = cmdbuf[1];
+    return ret;
 }
 
-bool util_filter_files(void* data, FS_Archive* archive, const char* path, u32 attributes) {
-    return !(attributes & FS_ATTRIBUTE_DIRECTORY);
-}
+Result util_import_seed(u64 titleId) {
+    char pathBuf[64];
+    snprintf(pathBuf, 64, "/fbi/seed/%016llX.dat", titleId);
 
-bool util_filter_hidden(void* data, FS_Archive* archive, const char* path, u32 attributes) {
-    return !(attributes & FS_ATTRIBUTE_HIDDEN);
-}
-
-bool util_filter_file_extension(void* data, FS_Archive* archive, const char* path, u32 attributes) {
-    if(data == NULL) {
-        return true;
-    }
-
-    char* extension = (char*) data;
-    size_t extensionLen = strlen(extension);
-
-    size_t len = strlen(path);
-    return util_filter_files(data, archive, path, attributes) && len >= extensionLen && strcmp(path + len - extensionLen, extension) == 0;
-}
-
-bool util_filter_not_path(void* data, FS_Archive* archive, const char* path, u32 attributes) {
-    if(data == NULL) {
-        return true;
-    }
-
-    return strcmp(path, (char*) data) != 0;
-}
-
-static Result util_traverse_dir_internal(FS_Archive* archive, const char* path, bool recursive, bool dirsFirst, void* data, bool (*filter)(void* data, FS_Archive* archive, const char* path, u32 attributes),
-                                                                                                                            void (*process)(void* data, FS_Archive* archive, const char* path, u32 attributes)) {
     Result res = 0;
 
-    FS_Path* fsPath = util_make_path_utf8(path);
+    FS_Path* fsPath = util_make_path_utf8(pathBuf);
     if(fsPath != NULL) {
-        Handle handle = 0;
-        if(R_SUCCEEDED(res = FSUSER_OpenDirectory(&handle, *archive, *fsPath))) {
-            size_t pathLen = strlen(path);
-            char* pathBuf = (char*) calloc(1, FILE_PATH_MAX);
-            if(pathBuf != NULL) {
-                strncpy(pathBuf, path, FILE_PATH_MAX);
+        u8 seed[16];
 
-                u32 entryCount = 0;
-                FS_DirectoryEntry entry;
-                u32 done = 0;
-                while(R_SUCCEEDED(FSDIR_Read(handle, &entryCount, 1, &entry)) && entryCount > 0) {
-                    ssize_t units = utf16_to_utf8((uint8_t*) pathBuf + pathLen, entry.name, FILE_PATH_MAX - pathLen - 1);
-                    if(units > 0) {
-                        pathBuf[pathLen + units] = '\0';
-                        if(entry.attributes & FS_ATTRIBUTE_DIRECTORY) {
-                            if(pathLen + units < FILE_PATH_MAX - 2) {
-                                pathBuf[pathLen + units] = '/';
-                                pathBuf[pathLen + units + 1] = '\0';
-                            }
-                        }
+        Handle fileHandle = 0;
+        if(R_SUCCEEDED(res = FSUSER_OpenFileDirectly(&fileHandle, ARCHIVE_SDMC, fsMakePath(PATH_EMPTY, ""), *fsPath, FS_OPEN_READ, 0))) {
+            u32 bytesRead = 0;
+            res = FSFILE_Read(fileHandle, &bytesRead, 0, seed, sizeof(seed));
 
-                        if(dirsFirst) {
-                            if(process != NULL && (filter == NULL || filter(data, archive, pathBuf, entry.attributes))) {
-                                process(data, archive, pathBuf, entry.attributes);
-                            }
-                        }
+            FSFILE_Close(fileHandle);
+        }
 
-                        if((entry.attributes & FS_ATTRIBUTE_DIRECTORY) && recursive) {
-                            if(R_FAILED(res = util_traverse_dir_internal(archive, pathBuf, recursive, dirsFirst, data, filter, process))) {
-                                break;
-                            }
-                        }
+        util_free_path_utf8(fsPath);
 
-                        if(!dirsFirst) {
-                            if(process != NULL && (filter == NULL || filter(data, archive, pathBuf, entry.attributes))) {
-                                process(data, archive, pathBuf, entry.attributes);
-                            }
+        if(R_FAILED(res)) {
+            static const char* regionStrings[] = {"JP", "US", "GB", "GB", "HK", "KR", "TW"};
+
+            u8 region = CFG_REGION_USA;
+            CFGU_GetSystemLanguage(&region);
+
+            char url[128];
+            snprintf(url, 128, "https://kagiya-ctr.cdn.nintendo.net/title/0x%016llX/ext_key?country=%s", titleId, regionStrings[region]);
+
+            httpcContext context;
+            if(R_SUCCEEDED(res = httpcOpenContext(&context, HTTPC_METHOD_GET, url, 1))) {
+                httpcSetSSLOpt(&context, SSLCOPT_DisableVerify);
+
+                u32 responseCode = 0;
+                if(R_SUCCEEDED(res = httpcBeginRequest(&context)) && R_SUCCEEDED(res = httpcGetResponseStatusCode(&context, &responseCode, 0))) {
+                    if(responseCode == 200) {
+                        u32 pos = 0;
+                        u32 bytesRead = 0;
+                        while(pos < sizeof(seed) && (R_SUCCEEDED(res = httpcDownloadData(&context, &seed[pos], sizeof(seed) - pos, &bytesRead)) || res == HTTPC_RESULTCODE_DOWNLOADPENDING)) {
+                            pos += bytesRead;
                         }
+                    } else {
+                        res = R_FBI_HTTP_RESPONSE_CODE;
                     }
-
-                    done++;
                 }
 
-                free(pathBuf);
-            } else {
-                res = R_FBI_OUT_OF_MEMORY;
+                httpcCloseContext(&context);
             }
-
-            FSDIR_Close(handle);
         }
 
-        util_free_path_utf8(fsPath);
+        if(R_SUCCEEDED(res)) {
+            res = FSUSER_AddSeed(titleId, seed);
+        }
     } else {
         res = R_FBI_OUT_OF_MEMORY;
     }
 
     return res;
-}
-
-static Result util_traverse_dir(FS_Archive* archive, const char* path, bool recursive, bool dirsFirst, void* data, bool (*filter)(void* data, FS_Archive* archive, const char* path, u32 attributes),
-                                                                                                                   void (*process)(void* data, FS_Archive* archive, const char* path, u32 attributes)) {
-    if(dirsFirst && strcmp(path, "/") != 0) {
-        if(process != NULL && (filter == NULL || filter(data, archive, path, FS_ATTRIBUTE_DIRECTORY))) {
-            process(data, archive, path, FS_ATTRIBUTE_DIRECTORY);
-        }
-    }
-
-    Result res = util_traverse_dir_internal(archive, path, recursive, dirsFirst, data, filter, process);
-
-    if(!dirsFirst && strcmp(path, "/") != 0) {
-        if(process != NULL && (filter == NULL || filter(data, archive, path, FS_ATTRIBUTE_DIRECTORY))) {
-            process(data, archive, path, FS_ATTRIBUTE_DIRECTORY);
-        }
-    }
-
-    return res;
-}
-
-static Result util_traverse_file(FS_Archive* archive, const char* path, bool recursive, bool dirsFirst, void* data, bool (*filter)(void* data, FS_Archive* archive, const char* path, u32 attributes),
-                                                                                                                    void (*process)(void* data, FS_Archive* archive, const char* path, u32 attributes)) {
-    Result res = 0;
-
-    FS_Path* fsPath = util_make_path_utf8(path);
-    if(fsPath != NULL) {
-        Handle handle = 0;
-        if(R_SUCCEEDED(res = FSUSER_OpenFile(&handle, *archive, *fsPath, FS_OPEN_READ, 0))) {
-            if(process != NULL && (filter == NULL || filter(data, archive, path, 0))) {
-                process(data, archive, path, 0);
-            }
-
-            FSFILE_Close(handle);
-        }
-
-        util_free_path_utf8(fsPath);
-    } else {
-        res = R_FBI_OUT_OF_MEMORY;
-    }
-
-    return res;
-}
-
-Result util_traverse_contents(FS_Archive* archive, const char* path, bool recursive, bool dirsFirst, void* data, bool (*filter)(void* data, FS_Archive* archive, const char* path, u32 attributes),
-                                                                                                                 void (*process)(void* data, FS_Archive* archive, const char* path, u32 attributes)) {
-    Result res = 0;
-
-    if(util_is_dir(archive, path)) {
-        res = util_traverse_dir(archive, path, recursive, dirsFirst, data, filter, process);
-    } else {
-        res = util_traverse_file(archive, path, recursive, dirsFirst, data, filter, process);
-    }
-
-    return res;
-}
-
-typedef struct {
-    u32* count;
-    void* data;
-    bool (*filter)(void* data, FS_Archive* archive, const char* path, u32 attributes);
-} count_data;
-
-static bool util_count_contents_filter(void* data, FS_Archive* archive, const char* path, u32 attributes) {
-    count_data* countData = (count_data*) data;
-    if(countData->filter != NULL) {
-        return countData->filter(countData->data, archive, path, attributes);
-    }
-
-    return true;
-}
-
-static void util_count_contents_process(void* data, FS_Archive* archive, const char* path, u32 attributes) {
-    (*((count_data*) data)->count)++;
-}
-
-Result util_count_contents(u32* out, FS_Archive* archive, const char* path, bool recursive, bool dirsFirst, void* data, bool (*filter)(void* data, FS_Archive* archive, const char* path, u32 attributes)) {
-    if(out == NULL) {
-        return 0;
-    }
-
-    count_data countData;
-    countData.count = out;
-    countData.data = data;
-    countData.filter = filter;
-    return util_traverse_contents(archive, path, recursive, dirsFirst, &countData, util_count_contents_filter, util_count_contents_process);
-}
-
-typedef struct {
-    char*** contents;
-    u32 index;
-    void* data;
-    bool (*filter)(void* data, FS_Archive* archive, const char* path, u32 attributes);
-} populate_data;
-
-static bool util_populate_contents_filter(void* data, FS_Archive* archive, const char* path, u32 attributes) {
-    populate_data* populateData = (populate_data*) data;
-    if(populateData->filter != NULL) {
-        return populateData->filter(populateData->data, archive, path, attributes);
-    }
-
-    return true;
-}
-
-static void util_populate_contents_process(void* data, FS_Archive* archive, const char* path, u32 attributes) {
-    u32 currPathSize = strlen(path) + 1;
-    char* currPath = (char*) calloc(1, currPathSize);
-    if(currPath == NULL) {
-        return;
-    }
-
-    strncpy(currPath, path, currPathSize);
-
-    populate_data* populateData = (populate_data*) data;
-    (*populateData->contents)[populateData->index++] = currPath;
-}
-
-Result util_populate_contents(char*** contentsOut, u32* countOut, FS_Archive* archive, const char* path, bool recursive, bool dirsFirst, void* data, bool (*filter)(void* data, FS_Archive* archive, const char* path, u32 attributes)) {
-    if(contentsOut == NULL || countOut == NULL) {
-        return 0;
-    }
-
-    util_count_contents(countOut, archive, path, recursive, dirsFirst, data, filter);
-    *contentsOut = (char**) calloc(*countOut, sizeof(char*));
-
-    if(*contentsOut == NULL) {
-        return R_FBI_OUT_OF_MEMORY;
-    }
-
-    populate_data populateData;
-    populateData.contents = contentsOut;
-    populateData.index = 0;
-    populateData.data = data;
-    populateData.filter = filter;
-
-    Result res = util_traverse_contents(archive, path, recursive, dirsFirst, &populateData, util_populate_contents_filter, util_populate_contents_process);
-    if(R_FAILED(res)) {
-        util_free_contents(*contentsOut, *countOut);
-    }
-
-    return res;
-}
-
-void util_free_contents(char** contents, u32 count) {
-    for(u32 i = 0; i < count; i++) {
-        if(contents[i] != NULL) {
-            free(contents[i]);
-        }
-    }
-
-    free(contents);
-}
-
-int util_compare_u32(const void* e1, const void* e2) {
-    u32 id1 = *(u32*) e1;
-    u32 id2 = *(u32*) e2;
-
-    return id1 > id2 ? 1 : id1 < id2 ? -1 : 0;
-}
-
-int util_compare_u64(const void* e1, const void* e2) {
-    u64 id1 = *(u64*) e1;
-    u64 id2 = *(u64*) e2;
-
-    return id1 > id2 ? 1 : id1 < id2 ? -1 : 0;
-}
-
-int util_compare_directory_entries(const void* e1, const void* e2) {
-    FS_DirectoryEntry* ent1 = (FS_DirectoryEntry*) e1;
-    FS_DirectoryEntry* ent2 = (FS_DirectoryEntry*) e2;
-
-    if((ent1->attributes & FS_ATTRIBUTE_DIRECTORY) && !(ent2->attributes & FS_ATTRIBUTE_DIRECTORY)) {
-        return -1;
-    } else if(!(ent1->attributes & FS_ATTRIBUTE_DIRECTORY) && (ent2->attributes & FS_ATTRIBUTE_DIRECTORY)) {
-        return 1;
-    } else {
-        char entryName1[0x213] = {'\0'};
-        utf16_to_utf8((uint8_t*) entryName1, ent1->name, sizeof(entryName1) - 1);
-
-        char entryName2[0x213] = {'\0'};
-        utf16_to_utf8((uint8_t*) entryName2, ent2->name, sizeof(entryName2) - 1);
-
-        return strcasecmp(entryName1, entryName2);
-    }
 }

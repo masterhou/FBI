@@ -44,7 +44,7 @@ BUILD_FLAGS += -O3 -DUNIQUE_ID=$(UNIQUE_ID) -fno-exceptions -ffunction-sections
 SYSTEM_MODE := 64MB
 SYSTEM_MODE_EXT := Legacy
 
-ICON_FLAGS :=
+ICON_FLAGS := --flags visible,ratingrequired,recordusage --cero 153 --esrb 153 --usk 153 --pegigen 153 --pegiptr 153 --pegibbfc 153 --cob 153 --grb 153 --cgsrr 153
 
 ROMFS_DIR := romfs
 BANNER_AUDIO := meta/audio.wav
