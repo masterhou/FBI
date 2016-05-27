@@ -40,8 +40,11 @@
 #define TEXTURE_WIFI_2 29
 #define TEXTURE_WIFI_3 30
 #define TEXTURE_AUTO_START 31
+
+#define NUM_COLORS 9
+
 #define TEXTURE_FTP 100
-#define NUM_COLORS 7
+
 
 #define COLOR_TEXT 0
 #define COLOR_NAND 1
@@ -50,6 +53,8 @@
 #define COLOR_DS_TITLE 4
 #define COLOR_FILE 5
 #define COLOR_DIRECTORY 6
+#define COLOR_ENABLED 7
+#define COLOR_DISABLED 8
 
 void screen_init();
 void screen_exit();
