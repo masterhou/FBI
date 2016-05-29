@@ -49,9 +49,9 @@ static void mainmenu_update(ui_view* view, void* data, linked_list* items, list_
     }
 
     if(linked_list_size(items) == 0) {
-        linked_list_add(items, &sd);
-        linked_list_add(items, &ftp);
         linked_list_add(items, &network_install);
+        linked_list_add(items, &ftp);
+        linked_list_add(items, &sd);
         linked_list_add(items, &qr_code_install);
         linked_list_add(items, &titles);
         linked_list_add(items, &tickets);
